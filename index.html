@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0d14">
+<title>Тень-мост</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#05060a;
+    touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none}
+  body{display:flex;align-items:center;justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#f4e6c8}
+  #wrap{position:relative;touch-action:none}
+  canvas{display:block;touch-action:none}
+  .layer{position:absolute;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;
+    background:radial-gradient(120% 80% at 50% 30%,rgba(28,22,14,.92),rgba(5,6,10,.97))}
+  .layer.on{display:flex}
+  h1{font-size:clamp(30px,9vw,54px);letter-spacing:.08em;font-weight:800;
+    color:#ffd79a;text-shadow:0 0 28px rgba(255,180,80,.55)}
+  h2{font-size:clamp(20px,6vw,32px);color:#ffd79a;font-weight:700}
+  p.sub{font-size:clamp(13px,3.6vw,17px);opacity:.72;max-width:22em;line-height:1.5}
+  .btn{padding:14px 34px;border:none;border-radius:999px;font-size:clamp(15px,4.4vw,20px);
+    font-weight:700;color:#2a1c08;cursor:pointer;
+    background:linear-gradient(180deg,#ffd98d,#f5ab3c);
+    box-shadow:0 6px 24px rgba(255,170,60,.35);transition:transform .12s}
+  .btn:active{transform:scale(.95)}
+  .btn.ghost{background:none;color:#ffd79a;border:2px solid rgba(255,200,120,.4);
+    box-shadow:none;font-size:15px;padding:10px 24px}
+  .stars{font-size:clamp(38px,11vw,62px);letter-spacing:.1em;filter:drop-shadow(0 0 14px rgba(255,190,90,.6))}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;width:100%;max-width:340px}
+  .cell{aspect-ratio:1;border-radius:16px;border:2px solid rgba(255,200,120,.28);
+    background:rgba(255,200,120,.06);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;cursor:pointer;font-weight:700;font-size:19px}
+  .cell.locked{opacity:.3;cursor:default}
+  .cell .s{font-size:10px;letter-spacing:1px;color:#ffc775;height:12px}
+  .cell:active{transform:scale(.94)}
+  #hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+    align-items:flex-start;padding:14px 16px;font-size:14px;font-weight:700;
+    pointer-events:none;text-shadow:0 2px 6px #000}
+  #hud .right{display:flex;gap:10px;pointer-events:auto}
+  .icon{width:38px;height:38px;border-radius:12px;border:1px solid rgba(255,200,120,.3);
+    background:rgba(10,8,6,.55);display:flex;align-items:center;justify-content:center;
+    font-size:17px;cursor:pointer;backdrop-filter:blur(4px)}
+  #hint{position:absolute;left:0;right:0;bottom:8%;transition:bottom .2s;text-align:center;font-size:15px;
+    color:#ffdca6;opacity:.85;pointer-events:none;text-shadow:0 2px 8px #000;padding:0 20px}
+  #lampSwitch{position:absolute;left:50%;transform:translateX(-50%);bottom:3%;
+    display:none;gap:12px;pointer-events:auto}
+  #lampSwitch.on{display:flex}
+  body.two-lamps #hint{bottom:14%}
+  .lampBtn{padding:9px 18px;border-radius:999px;font-size:13px;font-weight:700;
+    border:2px solid rgba(255,200,120,.3);background:rgba(10,8,6,.6);color:#f0d7a8;cursor:pointer}
+  .lampBtn.sel{border-color:#ffc061;color:#2a1c08;background:linear-gradient(180deg,#ffd98d,#f5ab3c)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div id="lvlLabel">Уровень 1</div>
+    <div class="right">
+      <div class="icon" id="btnRestart">↻</div>
+      <div class="icon" id="btnMenu">☰</div>
+    </div>
+  </div>
+  <div id="hint"></div>
+  <div id="lampSwitch"></div>
+
+  <div class="layer on" id="scrStart">
+    <h1>ТЕНЬ-МОСТ</h1>
+    <p class="sub">Двигай лампу пальцем. Тени предметов становятся мостами над пропастью.</p>
+    <button class="btn" id="btnPlay">Играть</button>
+    <button class="btn ghost" id="btnLevels">Выбор уровня</button>
+  </div>
+
+  <div class="layer" id="scrWin">
+    <h2 id="winTitle">Уровень пройден</h2>
+    <div class="stars" id="winStars">★★★</div>
+    <p class="sub" id="winSub">Монетки собраны</p>
+    <button class="btn" id="btnNext">Дальше</button>
+    <button class="btn ghost" id="btnAgain">Ещё раз</button>
+  </div>
+
+  <div class="layer" id="scrLevels">
+    <h2>Уровни</h2>
+    <div class="grid" id="lvlGrid"></div>
+    <button class="btn ghost" id="btnBack">Назад</button>
+  </div>
+</div>
+
+<!--CORE-START-->
+<script>
+/* ============================================================
+   ЯДРО ИГРЫ — чистая логика без DOM (тестируется в node)
+   ============================================================ */
+(function (root) {
+'use strict';
+
+const VW = 540;          // ширина вьюпорта (виртуальные px)
+const VH = 960;          // высота вьюпорта
+const G  = 760;          // линия земли
+const SPEED = 82;        // скорость ходьбы, px/сек
+const FOOT = 9;          // полуширина ступней
+const FALL_RESET = 0.45; // сек до рестарта после падения
+const CAM_LEAD = 180;    // насколько персонаж левее центра камеры
+const FROZEN_LEAD = 90;  // насколько застывшая тень выступает вперёд за ноги
+
+/* ---------- УРОВНИ (JSON-подобные данные) ----------
+   gaps:    провалы в земле {x,w}
+   objects: box {x,y,w,h} | pendulum {px,py,len,w,h,amp,period,phase}
+   gates:   ворота {x,w,h} — твёрдые, пока не освещены
+   coins:   монетки {x,y} — видны и собираются только под светом
+   lamps:   {x,y} — мировые координаты, зажимаются видимой областью
+--------------------------------------------------- */
+const LEVELS = [
+  { id:1, name:'Первый мост', hint:'Двигай лампу пальцем', levelW:900, finish:840,
+    gaps:[{x:330,w:110}],
+    objects:[{type:'box',x:350,y:500,w:110,h:46}],
+    gates:[], lamps:[{x:300,y:130}],
+    coins:[{x:230,y:698},{x:500,y:698},{x:700,y:698}] },
+
+  { id:2, name:'Широкая пропасть', hint:'Опусти лампу ниже — тень станет длиннее', levelW:1000, finish:940,
+    gaps:[{x:340,w:230}],
+    objects:[{type:'box',x:400,y:430,w:80,h:40}],
+    gates:[], lamps:[{x:330,y:90}],
+    coins:[{x:240,y:698},{x:640,y:698},{x:820,y:698}] },
+
+  { id:3, name:'На ходу', hint:'Переводи лампу прямо на ходу', levelW:1120, finish:1060,
+    gaps:[{x:300,w:100},{x:560,w:100}],
+    objects:[{type:'box',x:430,y:505,w:90,h:44}],
+    gates:[], lamps:[{x:430,y:170}],
+    coins:[{x:230,y:698},{x:480,y:698},{x:760,y:698}] },
+
+  { id:4, name:'Стык теней', hint:'Одной тени мало — сомкни две', levelW:1160, finish:1100,
+    gaps:[{x:320,w:360}],
+    objects:[{type:'box',x:290,y:440,w:70,h:38},{type:'box',x:640,y:440,w:70,h:38}],
+    gates:[], lamps:[{x:300,y:120}],
+    coins:[{x:230,y:698},{x:750,y:698},{x:980,y:698}] },
+
+  { id:5, name:'Маятник', hint:'Тень качается — лови момент', levelW:1150, finish:1090,
+    gaps:[{x:330,w:150}],
+    objects:[{type:'pendulum',px:420,py:330,len:150,w:76,h:40,amp:0.62,period:3.0,phase:0}],
+    gates:[], lamps:[{x:300,y:110}],
+    coins:[{x:240,y:698},{x:560,y:698},{x:850,y:698}] },
+
+  { id:6, name:'Ворота', hint:'Ворота открыты, пока на них падает свет', levelW:1150, finish:1090,
+    gaps:[{x:300,w:120}],
+    objects:[{type:'box',x:330,y:500,w:88,h:44}],
+    gates:[{x:640,w:26,h:150}],
+    lamps:[{x:300,y:140}],
+    coins:[{x:230,y:698},{x:520,y:698},{x:880,y:698}] },
+
+  { id:7, name:'Качели и ворота', hint:'Маятник, потом ворота — не зевай', levelW:1300, finish:1240,
+    gaps:[{x:300,w:145}],
+    objects:[{type:'pendulum',px:390,py:340,len:140,w:74,h:38,amp:0.58,period:3.2,phase:0}],
+    gates:[{x:760,w:26,h:150}],
+    lamps:[{x:290,y:110}],
+    coins:[{x:230,y:698},{x:560,y:698},{x:1000,y:698}] },
+
+  { id:8, name:'Две лампы', hint:'Одна лампа держит мост, вторая открывает ворота', levelW:1100, finish:1040,
+    gaps:[{x:390,w:250}],
+    objects:[{type:'box',x:440,y:470,w:95,h:38}],
+    gates:[{x:500,w:24,h:150}],
+    lamps:[{x:330,y:120},{x:470,y:150}],
+    coins:[{x:180,y:698},{x:700,y:698},{x:900,y:698}] }
+];
+
+/* ---------- геометрия ---------- */
+
+// центральная проекция точки на линию земли
+function projectX(L, x, y) {
+  if (y <= L.y + 1) return null;             // точка не ниже лампы — тени нет
+  return L.x + (x - L.x) * (G - L.y) / (y - L.y);
+}
+
+// 4 угла объекта в мировых координатах (с учётом качания маятника)
+function objCorners(o, t) {
+  if (o.type === 'pendulum') {
+    const a = o.amp * Math.sin((t / o.period) * Math.PI * 2 + (o.phase || 0));
+    const cx = o.px + Math.sin(a) * o.len;
+    const cy = o.py + Math.cos(a) * o.len;
+    const co = Math.cos(a), si = Math.sin(a);
+    const hw = o.w / 2, hh = o.h / 2;
+    const pts = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+    return pts.map(p => ({ x: cx + p[0]*co - p[1]*si, y: cy + p[0]*si + p[1]*co }));
+  }
+  return [ {x:o.x,y:o.y}, {x:o.x+o.w,y:o.y}, {x:o.x+o.w,y:o.y+o.h}, {x:o.x,y:o.y+o.h} ];
+}
+
+// тень объекта на земле от одной лампы: [a,b] или null
+function shadowSpan(o, L, t) {
+  const c = objCorners(o, t);
+  let a = Infinity, b = -Infinity;
+  for (const p of c) {
+    const px = projectX(L, p.x, p.y);
+    if (px === null) return null;            // объект выше лампы — тень не определена
+    if (px < a) a = px;
+    if (px > b) b = px;
+  }
+  if (!isFinite(a) || !isFinite(b)) return null;
+  const MAXW = 4000;
+  if (b - a > MAXW) return null;             // вырожденная проекция
+  return { a, b };
+}
+
+// пересекает ли отрезок p1-p2 выпуклый многоугольник poly
+function segHitsPoly(p1, p2, poly) {
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    if (segSeg(p1, p2, poly[i], poly[(i+1)%n])) return true;
+  }
+  return false;
+}
+function segSeg(a, b, c, d) {
+  const d1 = cross(c, d, a), d2 = cross(c, d, b);
+  const d3 = cross(a, b, c), d4 = cross(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+function cross(o, p, q) { return (p.x-o.x)*(q.y-o.y) - (p.y-o.y)*(q.x-o.x); }
+
+// освещена ли точка хотя бы одной лампой
+function isLit(pt, st) {
+  for (const L of st.lamps) {
+    let blocked = false;
+    for (const o of st.level.objects) {
+      if (segHitsPoly(L, pt, objCorners(o, st.t))) { blocked = true; break; }
+    }
+    if (!blocked) return true;
+  }
+  return false;
+}
+
+/* ---------- состояние ---------- */
+
+function lampLimits(level) {
+  let minTop = Infinity;
+  for (const o of level.objects) {
+    if (o.type === 'pendulum') minTop = Math.min(minTop, o.py);   // точка подвеса
+    else minTop = Math.min(minTop, o.y);
+  }
+  const maxY = Math.min(420, (isFinite(minTop) ? minTop : 500) - 70);
+  return { minY: 60, maxY: Math.max(80, maxY), pad: 46 };
+}
+
+function groundSegments(level) {
+  const segs = [];
+  let cur = 0;
+  const gaps = level.gaps.slice().sort((p, q) => p.x - q.x);
+  for (const g of gaps) { if (g.x > cur) segs.push({ a: cur, b: g.x }); cur = g.x + g.w; }
+  if (cur < level.levelW) segs.push({ a: cur, b: level.levelW });
+  return segs;
+}
+
+function createState(levelIndex) {
+  const level = LEVELS[levelIndex];
+  const lim = lampLimits(level);
+  return {
+    levelIndex, level, lim,
+    t: 0,
+    charX: 45, charY: G, vy: 0,
+    walkPhase: 0,
+    mode: 'play',                 // play | fall | win
+    fallTimer: 0, winTimer: 0,
+    camX: 0,
+    ground: groundSegments(level),
+    lamps: level.lamps.map(l => ({ x: l.x, y: l.y })),
+    active: 0,
+    shadows: [],                  // {a,b,oi,li}
+    frozen: null,                 // {a,b,key,flash}
+    coins: level.coins.map(c => ({ x: c.x, y: c.y, got: false, lit: false })),
+    gates: level.gates.map(g => ({ ...g, open: false })),
+    pushing: false,
+    events: []                    // ['step','coin','fall','win','freeze','gate']
+  };
+}
+
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+function onGround(x, st) {
+  for (const s of st.ground) if (x >= s.a - 1 && x <= s.b + 1) return true;
+  return false;
+}
+// опора: земля, застывшая тень или текущая тень
+function supportInfo(x, st) {
+  if (onGround(x, st)) return { type: 'ground' };
+  for (const s of st.shadows) {
+    if (x >= s.a && x <= s.b) return { type: 'shadow', span: s };
+  }
+  if (st.frozen && x >= st.frozen.a - 1 && x <= st.frozen.b + 1) return { type: 'frozen' };
+  return null;
+}
+
+function updateCamera(st) {
+  const maxCam = Math.max(0, st.level.levelW - VW);
+  st.camX = clamp(st.charX - CAM_LEAD, 0, maxCam);
+}
+
+function update(st, dt) {
+  st.events.length = 0;
+  if (dt > 0.05) dt = 0.05;
+  st.t += dt;
+
+  updateCamera(st);
+
+  // лампа живёт в мире, но не покидает видимую область
+  for (const L of st.lamps) {
+    L.x = clamp(L.x, st.camX + st.lim.pad, st.camX + VW - st.lim.pad);
+    L.y = clamp(L.y, st.lim.minY, st.lim.maxY);
+  }
+
+  // тени всех объектов от всех ламп
+  st.shadows.length = 0;
+  for (let oi = 0; oi < st.level.objects.length; oi++) {
+    for (let li = 0; li < st.lamps.length; li++) {
+      const sp = shadowSpan(st.level.objects[oi], st.lamps[li], st.t);
+      if (sp) st.shadows.push({ a: sp.a, b: sp.b, oi, li });
+    }
+  }
+
+  // ворота: открыты, пока освещены
+  for (const g of st.gates) {
+    const pt = { x: g.x + g.w / 2, y: G - 6 };   // ворота открыты, пока освещено их основание
+    const lit = isLit(pt, st);
+    if (lit !== g.open) st.events.push('gate');
+    g.open = lit;
+  }
+
+  // монетки
+  for (const c of st.coins) {
+    if (c.got) continue;
+    c.lit = isLit({ x: c.x, y: c.y }, st);
+    if (c.lit && Math.abs(c.x - st.charX) < 20 && Math.abs(c.y - (st.charY - 26)) < 46) {
+      c.got = true;
+      st.events.push('coin');
+    }
+  }
+
+  if (st.mode === 'fall') {
+    st.vy += 1500 * dt;
+    st.charY += st.vy * dt;
+    st.fallTimer += dt;
+    if (st.fallTimer >= FALL_RESET) return 'restart';
+    return null;
+  }
+  if (st.mode === 'win') { st.winTimer += dt; return null; }
+
+  // --- ходьба ---
+  let nx = st.charX + SPEED * dt;
+  st.pushing = false;
+  for (const g of st.gates) {
+    if (g.open) continue;
+    const wall = g.x - FOOT - 2;
+    if (nx > wall && st.charX <= g.x + g.w) { nx = Math.min(nx, wall); st.pushing = true; }
+  }
+  st.charX = nx;
+  st.walkPhase += (st.pushing ? 6 : 10) * dt;
+
+  // --- застывание тени под ногами ---
+  // Тень застывает ПОД ногами и позади: пройденный участок моста уже не исчезнет,
+  // а вот продолжение впереди по-прежнему надо держать светом.
+  const sup = supportInfo(st.charX, st);
+  if (sup && sup.type === 'shadow' && !onGround(st.charX, st)) {
+    const key = sup.span.oi + ':' + sup.span.li;
+    const tail = st.charX + FROZEN_LEAD;
+    if (!st.frozen || st.frozen.key !== key) {
+      st.frozen = { key, a: sup.span.a, b: Math.min(sup.span.b, tail), flash: 1 };
+      st.events.push('freeze');
+    } else {
+      st.frozen.a = Math.min(st.frozen.a, sup.span.a);
+      st.frozen.b = Math.max(st.frozen.b, Math.min(sup.span.b, tail));
+    }
+  }
+  if (st.frozen) {
+    st.frozen.flash = Math.max(0, st.frozen.flash - dt * 3);
+    if (st.charX < st.frozen.a - 2 || st.charX > st.frozen.b + 2) st.frozen = null;
+  }
+
+  // --- падение ---
+  if (!supportInfo(st.charX, st)) {
+    st.mode = 'fall'; st.vy = 40; st.fallTimer = 0;
+    st.events.push('fall');
+    return null;
+  }
+
+  // --- финиш ---
+  if (st.charX >= st.level.finish) {
+    st.mode = 'win'; st.winTimer = 0;
+    st.events.push('win');
+  }
+  return null;
+}
+
+function starsOf(st) { return st.coins.filter(c => c.got).length; }
+
+root.SHADOW_CORE = {
+  VW, VH, G, SPEED, FOOT, LEVELS,
+  projectX, objCorners, shadowSpan, segHitsPoly, isLit,
+  lampLimits, groundSegments, createState, update, supportInfo,
+  onGround, starsOf, clamp
+};
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<!--CORE-END-->
+
+<script>
+/* ============================================================
+   РЕНДЕР • ВВОД • ЗВУК • UI
+   ============================================================ */
+(function () {
+'use strict';
+const C = window.SHADOW_CORE;
+const { VW, VH, G, LEVELS } = C;
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+/* ---------- масштабирование ---------- */
+let scale = 1;
+function resize() {
+  const availW = window.innerWidth, availH = window.innerHeight;
+  scale = Math.min(availW / VW, availH / VH);
+  const cssW = Math.round(VW * scale), cssH = Math.round(VH * scale);
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  wrap.style.width = cssW + 'px'; wrap.style.height = cssH + 'px';
+  cv.style.width = cssW + 'px';   cv.style.height = cssH + 'px';
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+resize();
+
+/* ---------- звук ---------- */
+let ac = null;
+function audio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+function tone(freq, dur, type, vol, slideTo) {
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, a.currentTime);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime + dur);
+  g.gain.setValueAtTime(0.0001, a.currentTime);
+  g.gain.exponentialRampToValueAtTime(vol || 0.15, a.currentTime + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+  o.connect(g); g.connect(a.destination);
+  o.start(); o.stop(a.currentTime + dur + 0.02);
+}
+function noise(dur, vol) {
+  const a = audio(); if (!a) return;
+  const len = Math.floor(a.sampleRate * dur);
+  const buf = a.createBuffer(1, len, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const src = a.createBufferSource(); src.buffer = buf;
+  const g = a.createGain(); g.gain.value = vol || 0.12;
+  const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+  src.connect(f); f.connect(g); g.connect(a.destination); src.start();
+}
+const SFX = {
+  step:   () => tone(220 + Math.random() * 30, 0.06, 'triangle', 0.05),
+  shadow: () => tone(520, 0.09, 'sine', 0.07, 780),
+  coin:   () => { tone(880, 0.09, 'square', 0.08); setTimeout(() => tone(1320, 0.14, 'square', 0.07), 70); },
+  fall:   () => { tone(300, 0.45, 'sawtooth', 0.12, 60); noise(0.3, 0.08); },
+  win:    () => [0, 120, 240, 400].forEach((d, i) => setTimeout(() => tone([523, 659, 784, 1047][i], 0.3, 'triangle', 0.1), d)),
+  gate:   () => tone(160, 0.12, 'square', 0.06, 320),
+  push:   () => tone(90, 0.08, 'sawtooth', 0.04)
+};
+function buzz(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
+
+/* ---------- прогресс (в памяти) ---------- */
+const progress = { unlocked: 1, stars: {} };
+
+/* ---------- игровое состояние ---------- */
+let st = null, running = false, lastT = 0, stepAcc = 0;
+
+function loadLevel(i) {
+  st = C.createState(i);
+  document.getElementById('lvlLabel').textContent = 'Уровень ' + (i + 1);
+  document.getElementById('hint').textContent = st.level.hint;
+  buildLampSwitch();
+}
+function restart() {
+  const keep = st.levelIndex;
+  const lamps = st.lamps.map(l => ({ x: l.x, y: l.y }));
+  st = C.createState(keep);
+  st.lamps.forEach((l, i) => { if (lamps[i]) { l.x = lamps[i].x; l.y = lamps[i].y; } });
+  buildLampSwitch();
+}
+
+/* ---------- ввод: относительное перетаскивание лампы ---------- */
+let drag = null;
+function ptFromEvent(e) {
+  const r = cv.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return { x: (src.clientX - r.left) / scale, y: (src.clientY - r.top) / scale };
+}
+function onDown(e) {
+  if (!running) return;
+  audio();
+  const p = ptFromEvent(e);
+  const L = st.lamps[st.active];
+  drag = { px: p.x, py: p.y, lx: L.x - st.camX, ly: L.y };
+  e.preventDefault();
+}
+function onMove(e) {
+  if (!drag || !running) return;
+  const p = ptFromEvent(e);
+  const L = st.lamps[st.active];
+  L.x = C.clamp(st.camX + drag.lx + (p.x - drag.px),
+                st.camX + st.lim.pad, st.camX + C.VW - st.lim.pad);
+  L.y = C.clamp(drag.ly + (p.y - drag.py), st.lim.minY, st.lim.maxY);
+  e.preventDefault();
+}
+function onUp() { drag = null; }
+cv.addEventListener('touchstart', onDown, { passive: false });
+cv.addEventListener('touchmove',  onMove, { passive: false });
+cv.addEventListener('touchend',   onUp);
+cv.addEventListener('touchcancel',onUp);
+cv.addEventListener('mousedown',  onDown);
+window.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup',   onUp);
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+/* ---------- переключатель ламп ---------- */
+const lampSwitch = document.getElementById('lampSwitch');
+function buildLampSwitch() {
+  lampSwitch.innerHTML = '';
+  if (!st || st.lamps.length < 2) {
+    lampSwitch.classList.remove('on'); document.body.classList.remove('two-lamps'); return;
+  }
+  lampSwitch.classList.add('on');
+  document.body.classList.add('two-lamps');
+  st.lamps.forEach((l, i) => {
+    const b = document.createElement('div');
+    b.className = 'lampBtn' + (i === st.active ? ' sel' : '');
+    b.textContent = '💡 Лампа ' + (i + 1);
+    b.onclick = () => { st.active = i; drag = null; buildLampSwitch(); SFX.gate(); buzz(12); };
+    lampSwitch.appendChild(b);
+  });
+}
+
+/* ---------- рендер ---------- */
+function bg() {
+  const g1 = ctx.createLinearGradient(0, 0, 0, VH);
+  g1.addColorStop(0, '#11131f'); g1.addColorStop(0.55, '#0b0d16'); g1.addColorStop(1, '#05060b');
+  ctx.fillStyle = g1; ctx.fillRect(0, 0, VW, VH);
+}
+
+function drawLampGlow(L, sx, main) {
+  const r = main ? 520 : 400;
+  const g = ctx.createRadialGradient(sx, L.y, 6, sx, L.y, r);
+  g.addColorStop(0,    'rgba(255,224,160,' + (main ? 0.55 : 0.32) + ')');
+  g.addColorStop(0.18, 'rgba(255,186,90,'  + (main ? 0.20 : 0.12) + ')');
+  g.addColorStop(0.55, 'rgba(255,150,60,0.05)');
+  g.addColorStop(1,    'rgba(255,140,50,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(sx, L.y, r, 0, 7); ctx.fill();
+}
+
+function drawLampBody(L, sx, main) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,210,140,.35)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, L.y - 12); ctx.stroke();
+  ctx.fillStyle = main ? '#3a2c17' : '#241c10';
+  ctx.beginPath();
+  ctx.moveTo(sx - 20, L.y - 2); ctx.lineTo(sx + 20, L.y - 2);
+  ctx.lineTo(sx + 10, L.y - 22); ctx.lineTo(sx - 10, L.y - 22);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = main ? '#fff2cd' : '#c8b088';
+  ctx.beginPath(); ctx.arc(sx, L.y + 2, 9, 0, 7); ctx.fill();
+  ctx.shadowBlur = 24; ctx.shadowColor = '#ffcb72';
+  ctx.beginPath(); ctx.arc(sx, L.y + 2, 6, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+// теневой конус от объекта вниз к земле
+function drawShadowCone(obj, L, span, cam) {
+  const c = C.objCorners(obj, st.t);
+  let minP = { x: 0 }, maxP = { x: 0 }, minV = Infinity, maxV = -Infinity;
+  for (const p of c) {
+    const px = C.projectX(L, p.x, p.y);
+    if (px === null) return;
+    if (px < minV) { minV = px; minP = p; }
+    if (px > maxV) { maxV = px; maxP = p; }
+  }
+  ctx.save();
+  const g = ctx.createLinearGradient(0, L.y, 0, G);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(minP.x - cam, minP.y);
+  ctx.lineTo(span.a - cam, G);
+  ctx.lineTo(span.b - cam, G);
+  ctx.lineTo(maxP.x - cam, maxP.y);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawGround(cam) {
+  for (const s of st.ground) {
+    const x = s.a - cam, w = s.b - s.a;
+    if (x + w < -40 || x > VW + 40) continue;
+    const g = ctx.createLinearGradient(0, G, 0, VH);
+    g.addColorStop(0, '#463726'); g.addColorStop(0.12, '#2a2118'); g.addColorStop(1, '#14100c');
+    ctx.fillStyle = g; ctx.fillRect(x, G, w, VH - G);
+    ctx.fillStyle = 'rgba(255,205,140,.35)'; ctx.fillRect(x, G, w, 3);
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(x - 3, G, 3, VH - G); ctx.fillRect(x + w, G, 3, VH - G);
+  }
+}
+
+function drawShadowPlatforms(cam) {
+  const drawn = [];
+  const push = (a, b, frozen, flash) => {
+    ctx.save();
+    const overGap = !C.onGround((a + b) / 2, st);
+    ctx.fillStyle = 'rgba(8,6,14,.92)';
+    ctx.fillRect(a - cam, G, b - a, overGap ? 22 : 10);
+    if (overGap) {
+      ctx.strokeStyle = frozen ? 'rgba(255,214,140,.95)' : 'rgba(150,190,255,.55)';
+      ctx.lineWidth = frozen ? 3 : 2;
+      ctx.beginPath(); ctx.moveTo(a - cam, G + 1); ctx.lineTo(b - cam, G + 1); ctx.stroke();
+      const gg = ctx.createLinearGradient(0, G, 0, G + 26);
+      gg.addColorStop(0, frozen ? 'rgba(255,200,110,.30)' : 'rgba(120,170,255,.20)');
+      gg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gg; ctx.fillRect(a - cam, G, b - a, 26);
+      if (flash > 0) {
+        ctx.globalAlpha = flash;
+        ctx.strokeStyle = '#fff0c8'; ctx.lineWidth = 4 + flash * 5;
+        ctx.strokeRect(a - cam, G, b - a, 20);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+    drawn.push([a, b]);
+  };
+  for (const s of st.shadows) push(s.a, s.b, false, 0);
+  if (st.frozen) push(st.frozen.a, st.frozen.b, true, st.frozen.flash);
+}
+
+function drawObject(o, cam) {
+  const c = C.objCorners(o, st.t).map(p => ({ x: p.x - cam, y: p.y }));
+  if (o.type === 'pendulum') {
+    ctx.strokeStyle = 'rgba(190,170,140,.5)'; ctx.lineWidth = 2;
+    const cx = (c[0].x + c[2].x) / 2, cy = (c[0].y + c[2].y) / 2;
+    ctx.beginPath(); ctx.moveTo(o.px - cam, o.py); ctx.lineTo(cx, cy); ctx.stroke();
+    ctx.fillStyle = '#8b7a5e';
+    ctx.beginPath(); ctx.arc(o.px - cam, o.py, 5, 0, 7); ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.moveTo(c[0].x, c[0].y);
+  for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y);
+  ctx.closePath();
+  const gg = ctx.createLinearGradient(c[0].x, c[0].y, c[2].x, c[2].y);
+  gg.addColorStop(0, '#6e5a3c'); gg.addColorStop(1, '#2b2318');
+  ctx.fillStyle = gg; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,215,150,.55)'; ctx.lineWidth = 2; ctx.stroke();
+}
+
+function drawGates(cam) {
+  for (const g of st.gates) {
+    const x = g.x - cam;
+    const lift = g.open ? g.h * 0.86 : 0;
+    ctx.save();
+    ctx.globalAlpha = g.open ? 0.35 : 1;
+    ctx.fillStyle = g.open ? '#4a6f4a' : '#7a3030';
+    ctx.fillRect(x, G - g.h + lift, g.w, g.h - lift);
+    ctx.strokeStyle = g.open ? 'rgba(160,255,160,.5)' : 'rgba(255,140,140,.9)';
+    ctx.lineWidth = 2; ctx.strokeRect(x, G - g.h + lift, g.w, g.h - lift);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g.open ? 'rgba(150,255,170,.8)' : 'rgba(255,170,170,.85)';
+    ctx.fillRect(x - 6, G - g.h - 12, g.w + 12, 5);
+    // ворота над пропастью подвешены — рисуем цепь до верха кадра
+    if (!C.onGround(g.x + g.w / 2, st)) {
+      ctx.strokeStyle = 'rgba(190,170,140,.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x + g.w / 2, 0); ctx.lineTo(x + g.w / 2, G - g.h - 10); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawCoins(cam) {
+  for (const c of st.coins) {
+    if (c.got || !c.lit) continue;
+    const x = c.x - cam, y = c.y + Math.sin(st.t * 3 + c.x) * 4;
+    ctx.save();
+    ctx.shadowBlur = 16; ctx.shadowColor = '#ffd76a';
+    const g = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, 11);
+    g.addColorStop(0, '#fff6d0'); g.addColorStop(1, '#e8a72c');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(x, y, 9, 11, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawChar(cam) {
+  const x = st.charX - cam, y = st.charY;
+  const t = st.walkPhase;
+  const swing = st.mode === 'fall' ? 0 : Math.sin(t * 2.2) * 6;
+  const bob = st.mode === 'fall' ? 0 : Math.abs(Math.sin(t * 2.2)) * 2;
+  ctx.save();
+  ctx.translate(x, y - bob);
+  // ноги
+  ctx.strokeStyle = '#2b2a3a'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(swing * 0.8, -1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(-swing * 0.8, -1); ctx.stroke();
+  // тело
+  const g = ctx.createLinearGradient(-9, -46, 9, -18);
+  g.addColorStop(0, '#ffe2a8'); g.addColorStop(1, '#d99a4e');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-9, -44, 18, 26, 7);
+  else ctx.rect(-9, -44, 18, 26);          // запасной путь для старых Safari
+  ctx.fill();
+  // руки
+  ctx.strokeStyle = '#e0ab61'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-6, -38); ctx.lineTo(-6 - swing * 0.7, -24); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(6, -38);  ctx.lineTo(6 + swing * 0.7, -24);  ctx.stroke();
+  // голова
+  ctx.fillStyle = '#ffeec6';
+  ctx.beginPath(); ctx.arc(0, -54, 11, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2b2a3a';
+  const ey = st.pushing ? -56 : -55;
+  ctx.beginPath(); ctx.arc(3, ey, 1.8, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(-3.5, ey, 1.8, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function drawFinish(cam) {
+  const x = st.level.finish - cam;
+  if (x > VW + 30) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,220,150,.5)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, G); ctx.lineTo(x, G - 90); ctx.stroke();
+  ctx.fillStyle = '#ffd27a';
+  ctx.beginPath(); ctx.moveTo(x, G - 90); ctx.lineTo(x + 34, G - 76); ctx.lineTo(x, G - 62); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawVignette() {
+  const g = ctx.createRadialGradient(VW / 2, VH / 2, VH * 0.32, VW / 2, VH / 2, VH * 0.78);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.6)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+}
+
+function render() {
+  const cam = st.camX;
+  bg();
+  // свет всех ламп
+  st.lamps.forEach((L, i) => drawLampGlow(L, L.x - cam, i === st.active));
+  // конусы тени
+  for (const s of st.shadows) drawShadowCone(st.level.objects[s.oi], st.lamps[s.li], s, cam);
+  drawGround(cam);
+  drawShadowPlatforms(cam);
+  drawFinish(cam);
+  for (const o of st.level.objects) drawObject(o, cam);
+  drawGates(cam);
+  drawCoins(cam);
+  drawChar(cam);
+  st.lamps.forEach((L, i) => drawLampBody(L, L.x - cam, i === st.active));
+  drawVignette();
+  // счётчик монет
+  ctx.save();
+  ctx.font = 'bold 16px -apple-system,sans-serif'; ctx.fillStyle = '#ffd79a';
+  ctx.textAlign = 'center';
+  ctx.fillText('★ ' + st.coins.filter(c => c.got).length + '/3', VW / 2, 30);
+  ctx.restore();
+}
+
+/* ---------- цикл ---------- */
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!st) return;
+  const dt = Math.min(0.05, (now - lastT) / 1000 || 0);
+  lastT = now;
+  if (running) {
+    const prevMode = st.mode;
+    const r = C.update(st, dt);
+    for (const ev of st.events) {
+      if (ev === 'coin')   { SFX.coin(); buzz(18); }
+      if (ev === 'freeze') { SFX.shadow(); buzz(12); }
+      if (ev === 'fall')   { SFX.fall(); buzz([30, 40, 60]); }
+      if (ev === 'gate')   { SFX.gate(); }
+      if (ev === 'win')    { SFX.win(); buzz([25, 40, 25]); }
+    }
+    // шаги
+    if (st.mode === 'play') {
+      stepAcc += dt;
+      if (stepAcc > 0.28) { stepAcc = 0; if (!st.pushing) SFX.step(); else SFX.push(); }
+    }
+    if (r === 'restart') restart();
+    if (prevMode !== 'win' && st.mode === 'win') showWin();
+  }
+  render();
+}
+requestAnimationFrame(frame);
+
+/* ---------- UI ---------- */
+const scrStart = document.getElementById('scrStart');
+const scrWin = document.getElementById('scrWin');
+const scrLevels = document.getElementById('scrLevels');
+function show(el) {
+  [scrStart, scrWin, scrLevels].forEach(e => e.classList.remove('on'));
+  if (el) el.classList.add('on');
+  running = !el;
+  document.getElementById('hud').style.display = el ? 'none' : 'flex';
+  document.getElementById('hint').style.display = el ? 'none' : 'block';
+  if (st && st.lamps.length > 1) lampSwitch.classList.toggle('on', !el);
+}
+
+function startLevel(i) {
+  loadLevel(i);
+  lastT = performance.now();
+  show(null);
+  audio();
+}
+
+function showWin() {
+  const s = C.starsOf(st);
+  const idx = st.levelIndex;
+  progress.stars[idx] = Math.max(progress.stars[idx] || 0, s);
+  if (idx + 2 > progress.unlocked) progress.unlocked = Math.min(LEVELS.length, idx + 2);
+  document.getElementById('winTitle').textContent =
+    idx + 1 === LEVELS.length ? 'Все уровни пройдены!' : 'Уровень пройден';
+  document.getElementById('winStars').textContent = '★'.repeat(s) + '☆'.repeat(3 - s);
+  document.getElementById('winSub').textContent = 'Монетки: ' + s + ' из 3';
+  const next = document.getElementById('btnNext');
+  next.style.display = idx + 1 < LEVELS.length ? '' : 'none';
+  setTimeout(() => show(scrWin), 450);
+}
+
+function buildGrid() {
+  const grid = document.getElementById('lvlGrid');
+  grid.innerHTML = '';
+  LEVELS.forEach((l, i) => {
+    const locked = i + 1 > progress.unlocked;
+    const d = document.createElement('div');
+    d.className = 'cell' + (locked ? ' locked' : '');
+    const s = progress.stars[i] || 0;
+    d.innerHTML = '<div>' + (locked ? '🔒' : (i + 1)) + '</div><div class="s">' +
+      (locked ? '' : '★'.repeat(s)) + '</div>';
+    if (!locked) d.onclick = () => startLevel(i);
+    grid.appendChild(d);
+  });
+}
+
+document.getElementById('btnPlay').onclick    = () => startLevel(0);
+document.getElementById('btnLevels').onclick  = () => { buildGrid(); show(scrLevels); };
+document.getElementById('btnBack').onclick    = () => show(scrStart);
+document.getElementById('btnAgain').onclick   = () => startLevel(st.levelIndex);
+document.getElementById('btnNext').onclick    = () => startLevel(Math.min(LEVELS.length - 1, st.levelIndex + 1));
+document.getElementById('btnRestart').onclick = () => { restart(); };
+document.getElementById('btnMenu').onclick    = () => { buildGrid(); show(scrLevels); };
+
+// Отладочные ссылки: #play=3 — сразу запустить уровень 3;
+// &t=5 — промотать 5 секунд; &lamp=420,300 — поставить лампу в точку.
+const m = /#play=(\d+)/.exec(location.hash);
+if (m) {
+  startLevel(Math.min(LEVELS.length, Math.max(1, +m[1])) - 1);
+  const lp = /lamp=(-?\d+),(-?\d+)/.exec(location.hash);
+  if (lp) { st.lamps[0].x = +lp[1]; st.lamps[0].y = +lp[2]; }
+  const ff = /[#&]t=([\d.]+)/.exec(location.hash);
+  if (ff) { const n = Math.round(+ff[1] * 60);
+    for (let i = 0; i < n; i++) { if (C.update(st, 1 / 60) === 'restart') restart(); } }
+} else { loadLevel(0); show(scrStart); }
+})();
+</script>
+</body>
+</html>
