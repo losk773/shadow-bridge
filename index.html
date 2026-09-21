@@ -148,14 +148,15 @@ const LEVELS = [
 
   { id:6, name:'Ворота', hint:'Ворота открыты, пока на них падает свет', levelW:1150, finish:1090,
     gaps:[{x:300,w:120}],
-    objects:[{type:'box',x:330,y:500,w:88,h:44}],
+    objects:[{type:'box',x:330,y:500,w:88,h:44},{type:'box',x:690,y:520,w:90,h:40}],
     gates:[{x:640,w:26,h:150}],
     lamps:[{x:300,y:140}],
     coins:[{x:230,y:698},{x:520,y:698},{x:880,y:698}] },
 
   { id:7, name:'Качели и ворота', hint:'Маятник, потом ворота — не зевай', levelW:1300, finish:1240,
     gaps:[{x:300,w:145}],
-    objects:[{type:'pendulum',px:390,py:340,len:140,w:74,h:38,amp:0.58,period:3.2,phase:0}],
+    objects:[{type:'pendulum',px:390,py:340,len:140,w:74,h:38,amp:0.58,period:3.2,phase:0},
+             {type:'box',x:810,y:520,w:90,h:40}],
     gates:[{x:760,w:26,h:150}],
     lamps:[{x:290,y:110}],
     coins:[{x:230,y:698},{x:560,y:698},{x:1000,y:698}] },

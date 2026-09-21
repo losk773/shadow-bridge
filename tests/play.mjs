@@ -27,6 +27,21 @@ if(C.isLit({x:250,y:700},stFake)){console.log('  FAIL точка за ящико
 if(!C.isLit({x:60,y:700},stFake)){console.log('  FAIL точка сбоку должна быть освещена');ok=false;}
 console.log(ok?'✓ геометрия: проекция, тени, земля, затенение — ОК':'✗ геометрия сломана');
 
+
+/* ---- 3. Ворота: должны реально открываться и закрываться ---- */
+for(let li=0;li<C.LEVELS.length;li++){
+  const lv=C.LEVELS[li]; if(!lv.gates.length) continue;
+  for(const g of lv.gates){
+    const st=C.createState(li); st.charX=g.x-30; C.update(st,1/60);
+    const lim=st.lim; let open=0,closed=0;
+    for(let lx=st.camX+lim.pad;lx<=st.camX+C.VW-lim.pad;lx+=6)
+      for(let ly=lim.minY;ly<=lim.maxY;ly+=6)
+        C.isLit({x:g.x+g.w/2,y:C.G-6},{t:st.t,lamps:[{x:lx,y:ly}],level:lv})?open++:closed++;
+    console.log(`Ворота ур.${li+1} @${g.x}: открывающих позиций лампы ${open}, закрывающих ${closed} `
+      + (open&&closed?'✓':'✗ ворота статичны — механика не работает'));
+  }
+}
+
 /* ---- 2. Автопилот-планировщик ---- */
 const DT=1/60, TICK=0.12, LAMP_SPEED=430, HOR=2.2, HDT=1/30;
 const clone=st=>{const c=structuredClone({...st,level:null});c.level=st.level;return c;};
